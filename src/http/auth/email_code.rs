@@ -20,8 +20,15 @@ pub(crate) async fn send_code(
     }
 
     let code = random_numeric_code();
+    let Ok(code_hash) = hash_password(&code) else {
+        return oauth_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "server_error",
+            "验证码生成失败.",
+        );
+    };
     let key = format!("oauth:email_verify:code:{email}");
-    if valkey_set_ex(&state.valkey, key, blake3_hex(&code), EMAIL_CODE_TTL_SECONDS)
+    if valkey_set_ex(&state.valkey, key, code_hash, EMAIL_CODE_TTL_SECONDS)
         .await
         .is_err()
     {
