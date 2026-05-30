@@ -5,9 +5,14 @@ use crate::http::prelude::*;
 
 pub(crate) async fn token_authorization_code(
     state: &AppState,
+    req: &HttpRequest,
     client: &ClientRow,
     form: &TokenForm,
 ) -> HttpResponse {
+    let dpop_jkt = match validate_dpop_proof(state, req, None, None).await {
+        Ok(value) => value,
+        Err(error) => return dpop_error_response(error),
+    };
     let Some(code) = &form.code else {
         return oauth_error(StatusCode::BAD_REQUEST, "invalid_request", "缺少 code.");
     };
@@ -61,6 +66,7 @@ pub(crate) async fn token_authorization_code(
             nonce: payload.nonce,
             include_refresh: true,
             rotation: None,
+            dpop_jkt,
         },
     )
     .await
