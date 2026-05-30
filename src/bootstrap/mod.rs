@@ -13,9 +13,12 @@ use fred::{
     prelude::{Builder as ValkeyBuilder, Config as ValkeyConfig},
 };
 
+use crate::config::ConfigSource;
+use crate::database_config::normalize_database_url;
 use crate::db::create_pool;
-use crate::domain::{AppState, Settings};
-use crate::support::{ConfigSource, load_or_create_keyset, normalize_database_url};
+use crate::domain::AppState;
+use crate::settings::Settings;
+use crate::support::load_or_create_keyset;
 
 pub async fn run() -> anyhow::Result<()> {
     let config = ConfigSource::load()?;

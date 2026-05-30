@@ -1,13 +1,14 @@
-//! 配置读取与默认值。
-// 配置只在启动阶段读取，运行期通过 AppState 共享不可变快照。
+//! Runtime settings.
+// Settings are built from the startup configuration snapshot.
+
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
 use lettre::message::Mailbox;
 
-use crate::support::ConfigSource;
+use crate::config::ConfigSource;
 
-/// OAuth 服务的运行参数。
+/// OAuth service runtime parameters.
 #[derive(Clone)]
 pub(crate) struct Settings {
     pub(crate) issuer: String,
@@ -33,6 +34,7 @@ pub(crate) struct Settings {
 pub(crate) struct EmailSettings {
     pub(crate) delivery: EmailDelivery,
     pub(crate) code_ttl_seconds: u64,
+    pub(crate) send_cooldown_seconds: u64,
 }
 
 #[derive(Clone)]
@@ -59,7 +61,7 @@ pub(crate) enum SmtpTlsMode {
 }
 
 impl Settings {
-    /// 从配置源构造设置；未提供时使用本地开发默认值。
+    /// Builds settings from the startup configuration source.
     pub(crate) fn from_config(config: &ConfigSource) -> anyhow::Result<Self> {
         Ok(Self {
             issuer: config.string("ISSUER", "http://127.0.0.1:8000"),
@@ -113,6 +115,7 @@ impl EmailSettings {
         Ok(Self {
             delivery,
             code_ttl_seconds: config.parse("EMAIL_CODE_TTL_SECONDS", 900)?,
+            send_cooldown_seconds: config.parse("EMAIL_CODE_SEND_COOLDOWN_SECONDS", 60)?,
         })
     }
 }

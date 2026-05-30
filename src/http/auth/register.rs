@@ -14,10 +14,35 @@ pub(crate) async fn register(
     state: Data<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> HttpResponse {
-    let email = payload.email.trim().to_lowercase();
+    let Ok(email) = normalize_email_address(&payload.email) else {
+        return oauth_error(StatusCode::BAD_REQUEST, "invalid_request", "邮箱格式无效.");
+    };
     let code = payload.verification_code.trim().to_string();
+    match find_user_by_email(&state.diesel_db, &email).await {
+        Ok(Some(_)) => {
+            return oauth_error(StatusCode::CONFLICT, "invalid_request", "该邮箱已注册.");
+        }
+        Ok(None) => {}
+        Err(_) => {
+            return oauth_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "server_error",
+                "数据库连接失败.",
+            );
+        }
+    }
+
     let key = format!("oauth:email_verify:code:{email}");
-    let stored = valkey_get(&state.valkey, &key).await.unwrap_or(None);
+    let stored = match valkey_get(&state.valkey, &key).await {
+        Ok(value) => value,
+        Err(_) => {
+            return oauth_error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "server_error",
+                "验证码校验失败.",
+            );
+        }
+    };
     if !stored
         .as_deref()
         .is_some_and(|stored| verify_password(&code, stored))
@@ -30,15 +55,6 @@ pub(crate) async fn register(
     }
 
     let _ = valkey_del(&state.valkey, &key).await;
-    if find_user_by_email(&state.diesel_db, &email)
-        .await
-        .ok()
-        .flatten()
-        .is_some()
-    {
-        return oauth_error(StatusCode::CONFLICT, "invalid_request", "该邮箱已注册.");
-    }
-
     let password_hash = match hash_password(&payload.password) {
         Ok(v) => v,
         Err(_) => {

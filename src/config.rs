@@ -1,12 +1,13 @@
-//! 启动配置辅助函数。
-// 配置文件只在启动阶段读取；运行期通过 AppState 共享不可变快照。
+//! Runtime configuration file loading.
+// Configuration is read once at startup from .env.yaml.
 
-use std::{collections::HashMap, env, fs::File, path::Path};
+use std::{collections::HashMap, fs::File, path::Path};
 
 use anyhow::{Context, bail};
 use yaml_serde::Value as YamlValue;
 
-use super::prelude::*;
+const CONFIG_FILE: &str = ".env.yaml";
+const UNSUPPORTED_DOTENV_FILE: &str = ".env";
 
 #[derive(Clone, Debug, Default)]
 pub struct ConfigSource {
@@ -20,18 +21,13 @@ impl ConfigSource {
 
     fn load_from_dir(path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let path = path.as_ref();
-        let dotenv_path = path.join(".env");
-        let yaml_path = path.join(".env.yaml");
-        if dotenv_path.exists() && yaml_path.exists() {
-            bail!(".env and .env.yaml are mutually exclusive");
+        let dotenv_path = path.join(UNSUPPORTED_DOTENV_FILE);
+        if dotenv_path.exists() {
+            bail!(".env is not supported; use .env.yaml");
         }
 
         let mut source = Self::default();
-        if yaml_path.exists() {
-            source.merge_yaml_file(&yaml_path)?;
-        } else {
-            source.merge_dotenv_file(&dotenv_path)?;
-        }
+        source.merge_yaml_file(path.join(CONFIG_FILE))?;
         Ok(source)
     }
 
@@ -53,9 +49,7 @@ impl ConfigSource {
     }
 
     pub fn get(&self, key: &str) -> Option<String> {
-        env::var(key)
-            .ok()
-            .or_else(|| self.file_values.get(key).cloned())
+        self.file_values.get(key).cloned()
     }
 
     pub fn string(&self, key: &str, default: &str) -> String {
@@ -85,22 +79,6 @@ impl ConfigSource {
         Ok(parsed)
     }
 
-    fn merge_dotenv_file(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
-        let path = path.as_ref();
-        if !path.exists() {
-            return Ok(());
-        }
-
-        let iter = dotenvy::from_path_iter(path)
-            .with_context(|| format!("failed to read {}", path.display()))?;
-        for entry in iter {
-            let (key, value) =
-                entry.with_context(|| format!("failed to parse {}", path.display()))?;
-            self.file_values.insert(key, value);
-        }
-        Ok(())
-    }
-
     fn merge_yaml_file(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let path = path.as_ref();
         if !path.exists() {
@@ -123,14 +101,6 @@ impl ConfigSource {
         }
         Ok(())
     }
-}
-
-pub fn normalize_database_url(url: &str) -> String {
-    url.replace("postgresql+psycopg://", "postgresql://")
-}
-
-pub(crate) fn random_urlsafe_token() -> String {
-    URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>())
 }
 
 fn yaml_value_to_string(key: &str, value: &YamlValue) -> anyhow::Result<String> {
@@ -200,11 +170,16 @@ mod tests {
     }
 
     #[test]
-    fn dotenv_and_yaml_files_are_mutually_exclusive() {
-        let path = std::env::temp_dir().join(format!("nazo_config_{}", random_urlsafe_token()));
+    fn dotenv_file_is_rejected() {
+        let path = std::env::temp_dir().join(format!(
+            "nazo_config_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&path).unwrap();
         std::fs::write(path.join(".env"), "BIND=127.0.0.1:8000\n").unwrap();
-        std::fs::write(path.join(".env.yaml"), "BIND: 127.0.0.1:8000\n").unwrap();
 
         let result = ConfigSource::load_from_dir(&path);
         let _ = std::fs::remove_dir_all(&path);

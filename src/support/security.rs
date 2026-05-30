@@ -33,6 +33,22 @@ pub(crate) fn blake3_hex(value: &str) -> String {
     blake3::hash(value.as_bytes()).to_hex().to_string()
 }
 
+pub(crate) fn random_urlsafe_token() -> String {
+    URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>())
+}
+
+pub(crate) fn random_numeric_code() -> String {
+    const RANGE: u32 = 1_000_000;
+    const LIMIT: u32 = u32::MAX - (u32::MAX % RANGE);
+
+    loop {
+        let value = u32::from_be_bytes(rand::random::<[u8; 4]>());
+        if value < LIMIT {
+            return format!("{:06}", value % RANGE);
+        }
+    }
+}
+
 pub(crate) fn pkce_s256(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
@@ -156,4 +172,17 @@ pub(crate) fn decode_access_claims(state: &AppState, token: &str) -> Option<Clai
         return None;
     }
     Some(token_data.claims)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numeric_code_is_six_ascii_digits() {
+        let code = random_numeric_code();
+
+        assert_eq!(code.len(), 6);
+        assert!(code.chars().all(|value| value.is_ascii_digit()));
+    }
 }

@@ -4,19 +4,40 @@ use std::time::Duration;
 
 use anyhow::{Context, bail};
 use lettre::{
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-    message::{Mailbox, MultiPart, SinglePart, header::ContentType},
+    Address, AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{Mailbox, SinglePart, header::ContentType},
     transport::smtp::{
         authentication::Credentials,
         client::{Tls, TlsParameters},
     },
 };
 
-use crate::domain::{EmailDelivery, Settings, SmtpEmailSettings, SmtpTlsMode};
+use crate::settings::{EmailDelivery, Settings, SmtpEmailSettings, SmtpTlsMode};
 
-pub(crate) fn parse_email_recipient(raw: &str) -> anyhow::Result<Mailbox> {
-    raw.parse::<Mailbox>()
-        .context("recipient email address is invalid")
+use super::email_templates::VerificationEmail;
+
+pub(crate) struct EmailRecipient {
+    pub(crate) normalized: String,
+    pub(crate) mailbox: Mailbox,
+}
+
+pub(crate) fn normalize_email_address(raw: &str) -> anyhow::Result<String> {
+    let normalized = raw.trim().to_ascii_lowercase();
+    let address = normalized
+        .parse::<Address>()
+        .context("email address is invalid")?;
+    Ok(address.to_string())
+}
+
+pub(crate) fn parse_email_recipient(raw: &str) -> anyhow::Result<EmailRecipient> {
+    let normalized = normalize_email_address(raw)?;
+    let address = normalized
+        .parse::<Address>()
+        .context("email address is invalid")?;
+    Ok(EmailRecipient {
+        normalized,
+        mailbox: Mailbox::new(None, address),
+    })
 }
 
 pub(crate) fn email_delivery_configured(settings: &Settings) -> bool {
@@ -36,17 +57,9 @@ pub(crate) async fn send_verification_email(
         .from(smtp.from.clone())
         .to(recipient)
         .subject("Nazo OAuth 注册验证码")
-        .multipart(
-            MultiPart::alternative()
-                .singlepart(text_part(render_verification_text(
-                    code,
-                    settings.email.code_ttl_seconds,
-                )))
-                .singlepart(html_part(render_verification_html(
-                    code,
-                    settings.email.code_ttl_seconds,
-                ))),
-        )
+        .singlepart(html_part(
+            VerificationEmail::new(code, settings.email.code_ttl_seconds).render_html(),
+        ))
         .context("failed to build verification email")?;
 
     build_smtp_transport(smtp)?
@@ -80,76 +93,10 @@ fn build_smtp_transport(
     Ok(builder.build())
 }
 
-fn text_part(body: String) -> SinglePart {
-    SinglePart::builder()
-        .header(ContentType::TEXT_PLAIN)
-        .body(body)
-}
-
 fn html_part(body: String) -> SinglePart {
     SinglePart::builder()
         .header(ContentType::TEXT_HTML)
         .body(body)
-}
-
-fn render_verification_text(code: &str, ttl_seconds: u64) -> String {
-    format!(
-        "你的 Nazo OAuth 注册验证码是：{code}\n\n验证码将在 {} 后失效。如非本人操作，请忽略这封邮件。",
-        expiry_text(ttl_seconds)
-    )
-}
-
-fn render_verification_html(code: &str, ttl_seconds: u64) -> String {
-    let expiry = expiry_text(ttl_seconds);
-    format!(
-        r#"<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Nazo OAuth 注册验证码</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f4f6f8;color:#111827;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',Arial,sans-serif;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">你的 Nazo OAuth 注册验证码是 {code}</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;margin:0;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px 18px 32px;border-bottom:1px solid #edf0f3;">
-                <div style="font-size:13px;line-height:18px;color:#6b7280;font-weight:600;letter-spacing:0;text-transform:uppercase;">Nazo OAuth</div>
-                <h1 style="margin:8px 0 0 0;font-size:22px;line-height:30px;color:#111827;font-weight:700;">注册验证码</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:30px 32px 8px 32px;">
-                <p style="margin:0 0 18px 0;font-size:15px;line-height:24px;color:#374151;">请在注册页面输入下面的验证码：</p>
-                <div style="margin:0 0 20px 0;padding:18px 20px;background:#f8fafc;border:1px solid #dbe3ea;border-radius:8px;text-align:center;">
-                  <div style="font-size:34px;line-height:42px;color:#111827;font-weight:700;letter-spacing:8px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;">{code}</div>
-                </div>
-                <p style="margin:0;font-size:14px;line-height:22px;color:#4b5563;">验证码将在 <strong style="color:#111827;">{expiry}</strong> 后失效。</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 32px 30px 32px;">
-                <div style="padding:14px 16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:13px;line-height:20px;">如非本人操作，请忽略这封邮件。不要将验证码转发给任何人。</div>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>"#
-    )
-}
-
-fn expiry_text(ttl_seconds: u64) -> String {
-    if ttl_seconds >= 60 && ttl_seconds.is_multiple_of(60) {
-        format!("{} 分钟", ttl_seconds / 60)
-    } else {
-        format!("{ttl_seconds} 秒")
-    }
 }
 
 #[cfg(test)]
@@ -157,20 +104,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verification_text_uses_human_readable_expiry() {
-        let body = render_verification_text("123456", 900);
-
-        assert!(body.contains("123456"));
-        assert!(body.contains("15 分钟"));
+    fn recipient_email_rejects_display_name_mailbox() {
+        assert!(parse_email_recipient("Nazo <user@example.com>").is_err());
     }
 
     #[test]
-    fn verification_html_contains_code_and_inline_styles() {
-        let body = render_verification_html("123456", 900);
+    fn recipient_email_is_normalized_and_has_no_display_name() {
+        let recipient = parse_email_recipient(" USER@Example.COM ").unwrap();
 
-        assert!(body.contains("<!doctype html>"));
-        assert!(body.contains("123456"));
-        assert!(body.contains("letter-spacing:8px"));
-        assert!(body.contains("15 分钟"));
+        assert_eq!(recipient.normalized, "user@example.com");
+        assert_eq!(recipient.mailbox.name, None);
+    }
+
+    #[test]
+    fn html_part_uses_html_content_type() {
+        let part = html_part("<p>hello</p>".to_owned());
+
+        assert_eq!(
+            part.headers().get::<ContentType>().unwrap(),
+            ContentType::TEXT_HTML
+        );
     }
 }

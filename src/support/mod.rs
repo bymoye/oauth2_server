@@ -2,10 +2,10 @@
 // 子模块按职责拆分；外部仍通过 crate::support::* 使用稳定入口。
 mod access_requests;
 mod avatars;
-mod config;
 mod cookies;
 mod dpop;
 mod email;
+mod email_templates;
 mod keyset;
 mod oauth;
 mod repositories;
@@ -17,8 +17,6 @@ mod views;
 
 pub(crate) use access_requests::*;
 pub(crate) use avatars::*;
-pub(crate) use config::random_urlsafe_token;
-pub use config::{ConfigSource, normalize_database_url};
 pub(crate) use cookies::*;
 pub(crate) use dpop::*;
 pub(crate) use email::*;
@@ -61,11 +59,12 @@ pub(crate) mod prelude {
     pub(crate) use crate::db::{DbPool, get_conn};
     pub(crate) use crate::domain::{
         AccessRequestRow, AccessRequestStatus, AppState, Claims, ClientRow, ConfirmationClaims,
-        Keyset, Settings, UserRow,
+        Keyset, UserRow,
     };
     pub(crate) use crate::schema::{
         client_access_requests, oauth_clients, user_client_grants, users,
     };
+    pub(crate) use crate::settings::Settings;
 
     pub(crate) use super::{
         clear_cookie, constant_time_eq, cookie_value, find_client, find_user_by_id,

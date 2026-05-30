@@ -2,7 +2,7 @@
 
 use diesel::{Connection, PgConnection};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use nazo_oauth_server::support::{ConfigSource, normalize_database_url};
+use nazo_oauth_server::{config::ConfigSource, database_config::normalize_database_url};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
