@@ -79,6 +79,7 @@ pub(crate) fn make_jwt(
     audience: &str,
     scopes: &[String],
     ttl: i64,
+    dpop_jkt: Option<&str>,
 ) -> jsonwebtoken::errors::Result<String> {
     let now = Utc::now().timestamp();
     let claims = Claims {
@@ -93,6 +94,9 @@ pub(crate) fn make_jwt(
         iat: now,
         nbf: now,
         exp: now + ttl,
+        cnf: dpop_jkt.map(|jkt| ConfirmationClaims {
+            jkt: jkt.to_owned(),
+        }),
     };
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::EdDSA);
     header.typ = Some("at+jwt".to_string());
