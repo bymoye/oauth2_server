@@ -15,11 +15,41 @@ pub struct ConfigSource {
 
 impl ConfigSource {
     pub fn load() -> anyhow::Result<Self> {
+        Self::load_from_dir(".")
+    }
+
+    fn load_from_dir(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+        let path = path.as_ref();
+        let dotenv_path = path.join(".env");
+        let yaml_path = path.join(".env.yaml");
+        if dotenv_path.exists() && yaml_path.exists() {
+            bail!(".env and .env.yaml are mutually exclusive");
+        }
+
         let mut source = Self::default();
-        source.merge_yaml_file("env.yaml")?;
-        source.merge_yaml_file("env.yml")?;
-        source.merge_dotenv_file(".env")?;
+        if yaml_path.exists() {
+            source.merge_yaml_file(&yaml_path)?;
+        } else {
+            source.merge_dotenv_file(&dotenv_path)?;
+        }
         Ok(source)
+    }
+
+    pub fn required_string(&self, key: &str) -> anyhow::Result<String> {
+        let Some(value) = self
+            .get(key)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
+        else {
+            bail!("{key} is required");
+        };
+        Ok(value)
+    }
+
+    pub fn optional_string(&self, key: &str) -> Option<String> {
+        self.get(key)
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty())
     }
 
     pub fn get(&self, key: &str) -> Option<String> {
@@ -167,5 +197,18 @@ mod tests {
                 .bool("EMAIL_CODE_DEV_RESPONSE_ENABLED", false)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn dotenv_and_yaml_files_are_mutually_exclusive() {
+        let path = std::env::temp_dir().join(format!("nazo_config_{}", random_urlsafe_token()));
+        std::fs::create_dir_all(&path).unwrap();
+        std::fs::write(path.join(".env"), "BIND=127.0.0.1:8000\n").unwrap();
+        std::fs::write(path.join(".env.yaml"), "BIND: 127.0.0.1:8000\n").unwrap();
+
+        let result = ConfigSource::load_from_dir(&path);
+        let _ = std::fs::remove_dir_all(&path);
+
+        assert!(result.is_err());
     }
 }

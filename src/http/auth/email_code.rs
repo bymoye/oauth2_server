@@ -1,8 +1,5 @@
 //! 邮箱验证码发送端点。
-// 当前端点负责生成和保存验证码；邮件投递可由独立投递服务接入。
 use crate::http::prelude::*;
-
-const EMAIL_CODE_TTL_SECONDS: u64 = 900;
 
 #[derive(Deserialize)]
 pub(crate) struct SendCodeRequest {
@@ -15,8 +12,15 @@ pub(crate) async fn send_code(
     Json(payload): Json<SendCodeRequest>,
 ) -> HttpResponse {
     let email = payload.email.trim().to_lowercase();
-    if !email.contains('@') {
+    let Ok(recipient) = parse_email_recipient(&email) else {
         return oauth_error(StatusCode::BAD_REQUEST, "invalid_request", "邮箱格式无效.");
+    };
+    if !email_delivery_configured(&state.settings) {
+        return oauth_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "server_error",
+            "邮件发送未配置.",
+        );
     }
 
     let code = random_numeric_code();
@@ -28,14 +32,29 @@ pub(crate) async fn send_code(
         );
     };
     let key = format!("oauth:email_verify:code:{email}");
-    if valkey_set_ex(&state.valkey, key, code_hash, EMAIL_CODE_TTL_SECONDS)
-        .await
-        .is_err()
+    if valkey_set_ex(
+        &state.valkey,
+        &key,
+        code_hash,
+        state.settings.email.code_ttl_seconds,
+    )
+    .await
+    .is_err()
     {
         return oauth_error(
             StatusCode::SERVICE_UNAVAILABLE,
             "server_error",
             "验证码生成失败.",
+        );
+    }
+
+    if let Err(error) = send_verification_email(&state.settings, recipient, &code).await {
+        let _ = valkey_del(&state.valkey, &key).await;
+        tracing::warn!(%error, "failed to send verification email");
+        return oauth_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "server_error",
+            "验证码发送失败.",
         );
     }
 

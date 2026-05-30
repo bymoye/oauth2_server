@@ -2,6 +2,9 @@
 // 配置只在启动阶段读取，运行期通过 AppState 共享不可变快照。
 use std::path::PathBuf;
 
+use anyhow::{Context, bail};
+use lettre::message::Mailbox;
+
 use crate::support::ConfigSource;
 
 /// OAuth 服务的运行参数。
@@ -20,9 +23,39 @@ pub(crate) struct Settings {
     pub(crate) refresh_token_ttl_seconds: i64,
     pub(crate) avatar_max_bytes: usize,
     pub(crate) client_delivery_ttl_seconds: u64,
+    pub(crate) email: EmailSettings,
     pub(crate) email_code_dev_response_enabled: bool,
     pub(crate) avatar_storage_dir: PathBuf,
     pub(crate) jwk_keys_dir: PathBuf,
+}
+
+#[derive(Clone)]
+pub(crate) struct EmailSettings {
+    pub(crate) delivery: EmailDelivery,
+    pub(crate) code_ttl_seconds: u64,
+}
+
+#[derive(Clone)]
+pub(crate) enum EmailDelivery {
+    Disabled,
+    Smtp(SmtpEmailSettings),
+}
+
+#[derive(Clone)]
+pub(crate) struct SmtpEmailSettings {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) tls: SmtpTlsMode,
+    pub(crate) username: Option<String>,
+    pub(crate) password: Option<String>,
+    pub(crate) from: Mailbox,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SmtpTlsMode {
+    StartTls,
+    ImplicitTls,
+    None,
 }
 
 impl Settings {
@@ -53,6 +86,7 @@ impl Settings {
             refresh_token_ttl_seconds: config.parse("REFRESH_TOKEN_TTL_SECONDS", 2_592_000)?,
             avatar_max_bytes: config.parse("AVATAR_MAX_BYTES", 2_097_152)?,
             client_delivery_ttl_seconds: config.parse("CLIENT_DELIVERY_TTL_SECONDS", 86_400)?,
+            email: EmailSettings::from_config(config)?,
             email_code_dev_response_enabled: config
                 .bool("EMAIL_CODE_DEV_RESPONSE_ENABLED", false)?,
             avatar_storage_dir: PathBuf::from(
@@ -60,5 +94,65 @@ impl Settings {
             ),
             jwk_keys_dir: PathBuf::from(config.string("JWK_KEYS_DIR", "runtime/keys")),
         })
+    }
+}
+
+impl EmailSettings {
+    fn from_config(config: &ConfigSource) -> anyhow::Result<Self> {
+        let delivery = match config
+            .string("EMAIL_DELIVERY", "disabled")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "disabled" => EmailDelivery::Disabled,
+            "smtp" => EmailDelivery::Smtp(SmtpEmailSettings::from_config(config)?),
+            value => bail!("EMAIL_DELIVERY must be disabled or smtp, got {value}"),
+        };
+
+        Ok(Self {
+            delivery,
+            code_ttl_seconds: config.parse("EMAIL_CODE_TTL_SECONDS", 900)?,
+        })
+    }
+}
+
+impl SmtpEmailSettings {
+    fn from_config(config: &ConfigSource) -> anyhow::Result<Self> {
+        let username = config.optional_string("EMAIL_SMTP_USERNAME");
+        let password = config.optional_string("EMAIL_SMTP_PASSWORD");
+        if username.is_some() != password.is_some() {
+            bail!("EMAIL_SMTP_USERNAME and EMAIL_SMTP_PASSWORD must be configured together");
+        }
+
+        let from = config
+            .required_string("EMAIL_FROM")?
+            .parse::<Mailbox>()
+            .context("EMAIL_FROM must be a valid mailbox")?;
+
+        Ok(Self {
+            host: config.required_string("EMAIL_SMTP_HOST")?,
+            port: config.parse("EMAIL_SMTP_PORT", 587)?,
+            tls: SmtpTlsMode::from_config(config)?,
+            username,
+            password,
+            from,
+        })
+    }
+}
+
+impl SmtpTlsMode {
+    fn from_config(config: &ConfigSource) -> anyhow::Result<Self> {
+        match config
+            .string("EMAIL_SMTP_TLS", "starttls")
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "starttls" => Ok(Self::StartTls),
+            "implicit" | "tls" => Ok(Self::ImplicitTls),
+            "none" | "plain" => Ok(Self::None),
+            value => bail!("EMAIL_SMTP_TLS must be starttls, implicit, or none, got {value}"),
+        }
     }
 }

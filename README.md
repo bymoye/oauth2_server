@@ -64,9 +64,9 @@ Nazo OAuth Server 是一个基于 Actix Web 的 OAuth/OIDC 服务，提供用户
 
 ## 配置
 
-服务启动时会读取 `env.yaml`、`env.yml` 和 `.env`，也支持直接使用进程环境变量。优先级为：进程环境变量高于 `.env`，`.env` 高于 `env.yaml` / `env.yml`，配置文件未提供时使用内置默认值；配置文件存在但不可读、格式错误或字段类型错误时启动失败。
+服务启动时会读取 `.env` 或 `.env.yaml`，也支持直接使用进程环境变量。`.env` 与 `.env.yaml` 二选一，两个文件同时存在时启动失败；进程环境变量用于部署层覆盖文件配置。配置文件未提供时使用内置默认值；配置文件存在但不可读、格式错误或字段类型错误时启动失败。
 
-`env.yaml` 支持顶层键值形式；数组值会按逗号合并，适合 `CORS_ALLOWED_ORIGINS` 这类列表配置。`.env` 支持 `KEY=value` 形式，适合本地密钥或临时覆盖。仓库提供 `.env.example` 和 `env.yaml.example` 作为字段参考，真实配置文件不应提交。
+`.env.yaml` 支持顶层键值形式；数组值会按逗号合并，适合 `CORS_ALLOWED_ORIGINS` 这类列表配置。`.env` 支持 `KEY=value` 形式。仓库提供 `.env.example` 和 `.env.yaml.example` 作为字段参考，真实配置文件不应提交。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -86,7 +86,15 @@ Nazo OAuth Server 是一个基于 Actix Web 的 OAuth/OIDC 服务，提供用户
 | `REFRESH_TOKEN_TTL_SECONDS` | `2592000` | refresh token 有效期，单位为秒 |
 | `AVATAR_MAX_BYTES` | `2097152` | 头像最大字节数 |
 | `CLIENT_DELIVERY_TTL_SECONDS` | `86400` | 客户端接入信息投递有效期，单位为秒 |
-| `EMAIL_CODE_DEV_RESPONSE_ENABLED` | `false` | 仅 debug 构建可用；启用后 `/auth/send-code` 响应包含注册验证码，便于本地开发 |
+| `EMAIL_DELIVERY` | `disabled` | 邮件投递方式；`smtp` 启用真实 SMTP 投递，`disabled` 时 `/auth/send-code` 返回服务不可用 |
+| `EMAIL_CODE_TTL_SECONDS` | `900` | 注册邮箱验证码有效期，单位为秒 |
+| `EMAIL_SMTP_HOST` | 无 | SMTP 主机；`EMAIL_DELIVERY=smtp` 时必填 |
+| `EMAIL_SMTP_PORT` | `587` | SMTP 端口 |
+| `EMAIL_SMTP_TLS` | `starttls` | SMTP TLS 模式，可选 `starttls`、`implicit`、`none` |
+| `EMAIL_SMTP_USERNAME` | 无 | SMTP 用户名；如需认证，应与 `EMAIL_SMTP_PASSWORD` 同时配置 |
+| `EMAIL_SMTP_PASSWORD` | 无 | SMTP 密码；如需认证，应与 `EMAIL_SMTP_USERNAME` 同时配置 |
+| `EMAIL_FROM` | 无 | 发件人邮箱；`EMAIL_DELIVERY=smtp` 时必填，支持 `Name <mail@example.com>` 格式 |
+| `EMAIL_CODE_DEV_RESPONSE_ENABLED` | `false` | 仅 debug 构建可用；邮件成功投递后，响应包含注册验证码，便于本地开发 |
 | `AVATAR_STORAGE_DIR` | `runtime/avatars` | 头像存储目录 |
 | `JWK_KEYS_DIR` | `runtime/keys` | Ed25519 keyset 存储目录 |
 
