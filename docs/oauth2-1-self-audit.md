@@ -1,4 +1,4 @@
-# OAuth 2.1 and Best-Practice Self-Audit
+# OAuth 2.1 and Best-Practice Audit
 
 Date: 2026-06-08
 
@@ -53,9 +53,9 @@ References:
 | FAPI2 Message Signing JARM | Implemented and OIDF-tested where advertised | Signing failure must not fall back to plain query responses. |
 | FAPI2 signed introspection option | Deferred | Defined in the matrix but not advertised until implemented and tested. |
 
-## Product Features That Are Not OAuth 2.1 Core
+## Outside OAuth 2.1 Core
 
-These are intentionally not treated as OAuth 2.1 completion blockers:
+These product features are outside the OAuth 2.1 core profile:
 
 - Dynamic Client Registration / RFC 7591.
 - Client Configuration Management / RFC 7592.
