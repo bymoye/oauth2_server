@@ -46,7 +46,7 @@ References:
 
 | Profile | Status | Notes |
 | --- | --- | --- |
-| OIDC Basic OP | Implemented and OIDF-tested | Latest durable record is under `docs/conformance`; final head must be retested after new commits. |
+| OIDC Basic OP | Implemented and OIDF-tested | Latest durable record is `docs/conformance/2026-06-08-oidf-full-matrix.md`; implementation-affecting commits must be retested. |
 | OIDC Config | Implemented and OIDF-tested | Discovery metadata is generated from runtime profile/config. |
 | FAPI2 Security | Implemented and OIDF-tested | PAR, PKCE S256, confidential clients, sender-constrained tokens, and client auth policy are separated from Message Signing. |
 | FAPI2 Message Signing authz request | Implemented and OIDF-tested | Signed request objects at PAR with `aud`, `nbf`, and bounded `exp`. |
@@ -66,7 +66,7 @@ These are intentionally not treated as OAuth 2.1 completion blockers:
 
 They remain ecosystem or identity-platform features with separate threat models in `docs/ecosystem-onboarding.md`, `docs/tenancy.md`, and `docs/scim.md`.
 
-## Current Blocking Evidence
+## Current Evidence
 
 Local implementation gates pass on the current working tree:
 
@@ -75,4 +75,9 @@ Local implementation gates pass on the current working tree:
 - `cargo test --all-targets --all-features --locked`
 - `git diff --check`
 
-The final certification blocker is not a known OAuth 2.1 feature gap. It is evidence freshness: after the resource-server DPoP verifier and SCIM token changes, the official OIDF full matrix must be rerun on the final commit and a new durable record must be added under `docs/conformance`.
+The evidence freshness blocker has been closed for the current implementation:
+the official OIDF full matrix passed on implementation commit
+`8f6901abe2a014b4a5d1e486d986598daf3b825f`, and the durable result index is
+`docs/conformance/2026-06-08-oidf-full-matrix.md`. Documentation-only commits
+can differ from the implementation commit under test; implementation-affecting
+commits must rerun the official matrix and add a fresh durable record.
